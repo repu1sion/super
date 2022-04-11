@@ -272,23 +272,33 @@ func saveDevicesJson(devices map[string]DeviceEntry) {
 }
 
 func getDevicesJson() map[string]DeviceEntry {
+	fmt.Println("getDevicesJson() called")
 	devices := map[string]DeviceEntry{}
+	fmt.Println("getDevicesJson() called 1")
 	data, err := ioutil.ReadFile(DevicesConfigFile)
+	fmt.Println("getDevicesJson() called 2")
 	if err != nil {
 		return nil
 	}
+	fmt.Println("getDevicesJson() called 3")
 	err = json.Unmarshal(data, &devices)
+	fmt.Println("getDevicesJson() called 4")
 	if err != nil {
 		log.Fatal(err)
 	}
+	fmt.Println("getDevicesJson() called 5")
 	return devices
 }
 
 func getDevices(w http.ResponseWriter, r *http.Request) {
+
+	fmt.Println("getDevices() called")
+
 	Devicesmtx.Lock()
 	defer Devicesmtx.Unlock()
 
 	devices := getDevicesJson()
+	fmt.Println("getDevices() called 1")
 
 	//mask PSKs
 	for i, entry := range devices {
@@ -298,8 +308,10 @@ func getDevices(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	fmt.Println("getDevices() called 2")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(devices)
+	fmt.Println("getDevices() called 3")
 }
 
 func handleUpdateDevice(w http.ResponseWriter, r *http.Request) {
@@ -1411,6 +1423,8 @@ func ProxyRequestHandler(proxy *httputil.ReverseProxy) func(http.ResponseWriter,
 }
 
 func main() {
+
+	fmt.Println("api main() called")
 
 	loadConfig()
 
