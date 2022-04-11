@@ -1,3 +1,3 @@
-#!/bin/bash
-docker-compose -f docker-compose-prebuilt.yml up -d
+#!/usr/bin/env bash
+docker-compose -f docker-compose-prebuilt.yml up
 
