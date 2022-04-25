@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/MonkeyBuisness/golang-iwlist"
 	"github.com/duo-labs/webauthn/webauthn"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -1420,6 +1421,21 @@ func ProxyRequestHandler(proxy *httputil.ReverseProxy) func(http.ResponseWriter,
 		}
 		proxy.ServeHTTP(w, r)
 	}
+}
+
+
+func getIwScan(iface string) {
+
+        fmt.Println("iwlist scan:")
+        //cells, err := wlist.Scan("wlp4s0")
+        cells, err := wlist.Scan(iface)
+        if err != nil {
+                panic(err)
+        }
+
+        fmt.Println(cells)
+
+	//XXX - output to json.
 }
 
 func main() {
