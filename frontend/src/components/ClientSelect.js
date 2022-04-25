@@ -19,6 +19,19 @@ class ClientSelect extends Component {
     this.props.onChange(newValue, actionMeta)
   }
 
+  updateValue(newValue) {
+    let defaultValues = Array.isArray(newValue) ? newValue : [newValue]
+
+    let value = []
+    for (let o of this.state.options) {
+      if (defaultValues.includes(o.value)) {
+        value.push(o)
+      }
+    }
+
+    this.setState({ value })
+  }
+
   async componentDidMount() {
     let devices = []
     try {
@@ -34,7 +47,7 @@ class ClientSelect extends Component {
         return { label: `${d.RecentIP} ${d.Name}`, value: d.RecentIP }
       })
 
-    if (!this.props.isMulti) {
+    if (!this.props.isMulti && !this.props.skipAll) {
       options = [{ label: 'All clients', value: '*' }].concat(options)
     }
 
@@ -42,28 +55,24 @@ class ClientSelect extends Component {
 
     // set default value
     if (this.props.value) {
-      let defaultValues = Array.isArray(this.props.value)
-        ? this.props.value
-        : [this.props.value]
-
-      let value = []
-      for (let o of options) {
-        if (defaultValues.includes(o.value)) {
-          value.push(o)
-        }
-      }
-
-      this.setState({ value })
-    } else if (!this.props.isMulti) {
+      this.updateValue(this.props.value)
+    } else if (!this.props.isMulti && !this.props.skipAll) {
       this.setState({ value: { label: 'All Clients', value: '*' } })
+    }
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.value != this.props.value) {
+      this.updateValue(this.props.value)
     }
   }
 
   render() {
     let isMulti = this.props.isMulti !== undefined ? this.props.isMulti : false
-    let canAdd = this.props.canAdd !== undefined ? this.props.canAdd : false
+    let isCreatable =
+      this.props.isCreatable !== undefined ? this.props.isCreatable : false
 
-    if (canAdd) {
+    if (isCreatable) {
       return (
         <CreatableSelect
           isClearable
@@ -90,6 +99,7 @@ class ClientSelect extends Component {
 
 ClientSelect.propTypes = {
   isMulti: PropTypes.bool,
+  isCreatable: PropTypes.bool,
   value: PropTypes.oneOfType([PropTypes.array, PropTypes.string]),
   onChange: PropTypes.func
 }

@@ -2,13 +2,11 @@ import React, { useContext, Component } from 'react'
 // react plugin used to create charts
 import { Chart as ChartJS } from 'chart.js/auto'
 import { Bar } from 'react-chartjs-2'
-import {
-  getTraffic,
-  getTrafficHistory,
-  getArp,
-  getDevices
-} from 'components/Helpers/Api'
+
+import { deviceAPI, trafficAPI, wifiAPI } from 'api'
+import DateRange from 'components/DateRange'
 import { APIErrorContext } from 'layouts/Admin'
+import { prettySize } from 'utils'
 
 import {
   Card,
@@ -16,12 +14,11 @@ import {
   CardBody,
   CardFooter,
   CardTitle,
+  CardSubtitle,
+  List,
+  ListInlineItem,
   Row,
-  Col,
-  UncontrolledDropdown,
-  DropdownToggle,
-  DropdownMenu,
-  DropdownItem
+  Col
 } from 'reactstrap'
 
 export default class Traffic extends Component {
@@ -37,13 +34,13 @@ export default class Traffic extends Component {
   ipToMac = {}
 
   async processTrafficHistory(target, scale) {
-    const devices = await getDevices().catch((error) => {
+    const devices = await deviceAPI.list().catch((error) => {
       this.context.reportError(
         'API Failure get ' + target + 'traffic: ' + error.message
       )
     })
 
-    const arp = await getArp().catch((error) => {
+    const arp = await wifiAPI.arp().catch((error) => {
       this.context.reportError(
         'API Failure get arp information: ' + error.message
       )
@@ -140,21 +137,21 @@ export default class Traffic extends Component {
     let do_time_series = scale != 'All Time'
 
     if (do_time_series) {
-      let traffic_series = await getTrafficHistory().catch((error) => {
+      let traffic_series = await trafficAPI.history().catch((error) => {
         this.context.reportError(
           'API Failure get traffic history: ' + error.message
         )
       })
 
       let recent_reading = traffic_series[0]
-      let offset = 0
-      if (scale == '1 Hour') {
-        offset = 60 - 1
-      } else if (scale == '1 Day') {
-        offset = 60 * 24 - 1
-      } else if (scale == '15 Minutes') {
-        offset = 15 - 1
+
+      const scaleOffset = {
+        '1 Hour': 60 - 1,
+        '1 Day': 60 * 24 - 1,
+        '15 Minutes': 15 - 1
       }
+
+      let offset = scaleOffset[scale] || 0
 
       if (offset >= traffic_series.length) {
         offset = traffic_series.length - 1
@@ -201,18 +198,18 @@ export default class Traffic extends Component {
       return processData(dataPointsIn, dataPointsOut)
     } else {
       //data for all time traffic
-      const traffic_in = await getTraffic('incoming_traffic_' + target).catch(
-        (error) => {
+      const traffic_in = await trafficAPI
+        .traffic('incoming_traffic_' + target)
+        .catch((error) => {
           this.context.reportError('API Failure get traffic: ' + error.message)
-        }
-      )
-      const traffic_out = await getTraffic('outgoing_traffic_' + target).catch(
-        (error) => {
+        })
+      const traffic_out = await trafficAPI
+        .traffic('outgoing_traffic_' + target)
+        .catch((error) => {
           this.context.reportError(
             'API Failure get ' + target + ' traffic: ' + error.message
           )
-        }
-      )
+        })
       return processData(traffic_in, traffic_out)
     }
   }
@@ -231,9 +228,16 @@ export default class Traffic extends Component {
         legend: {
           display: false
         },
-
         tooltip: {
+          intersect: false,
+          position: 'nearest',
+          caretSize: 5,
           callbacks: {
+            label: (context) => {
+              let label = context.dataset.label || ''
+              let sz = `${context.raw.toFixed(2)} MB`
+              return `${label}: ${sz}`
+            },
             beforeBody: (TooltipItems, object) => {
               let ip = TooltipItems[0].label
               let label = ''
@@ -249,25 +253,6 @@ export default class Traffic extends Component {
               return label
             }
           }
-        },
-
-        tooltips: {
-          tooltipFillColor: 'rgba(0,0,0,0.5)',
-          tooltipFontFamily:
-            "'Helvetica Neue', 'Helvetica', 'Arial', sans-serif",
-          tooltipFontSize: 14,
-          tooltipFontStyle: 'normal',
-          tooltipFontColor: '#fff',
-          tooltipTitleFontFamily:
-            "'Helvetica Neue', 'Helvetica', 'Arial', sans-serif",
-          tooltipTitleFontSize: 14,
-          tooltipTitleFontStyle: 'bold',
-          tooltipTitleFontColor: '#fff',
-          tooltipYPadding: 6,
-          tooltipXPadding: 6,
-          tooltipCaretSize: 8,
-          tooltipCornerRadius: 6,
-          tooltipXOffset: 10
         }
       },
       scales: {
@@ -275,7 +260,6 @@ export default class Traffic extends Component {
           min: 0.01,
           type: 'logarithmic',
           ticks: {
-            /* callback: (a,b,c) => {}, */
             callback: function (value, index, values) {
               return value + 'MB'
             },
@@ -305,10 +289,8 @@ export default class Traffic extends Component {
   }
 
   render() {
-    let handleScaleMenu = (e) => {
-      let choice = e.target.parentNode.getAttribute('value')
-      let scale = e.target.value
-
+    const handleChangeTime = (newValue, choice) => {
+      let scale = newValue.value
       this.state[choice + '_scale'] = scale
       this.processTrafficHistory(choice, scale).then((result) => {
         let o = {}
@@ -320,48 +302,29 @@ export default class Traffic extends Component {
     return (
       <div className="content">
         <Row>
-          <Col md="10"></Col>
-          <Col md="2">
-            <UncontrolledDropdown group>
-              <DropdownToggle caret color="default">
-                {this.state.wan_scale}
-              </DropdownToggle>
-              <DropdownMenu value="wan">
-                <DropdownItem value="All Time" onClick={handleScaleMenu}>
-                  All time
-                </DropdownItem>
-                <DropdownItem value="1 Day" onClick={handleScaleMenu}>
-                  Last Day
-                </DropdownItem>
-                <DropdownItem value="1 Hour" onClick={handleScaleMenu}>
-                  Last Hour
-                </DropdownItem>
-                <DropdownItem value="15 Minutes" onClick={handleScaleMenu}>
-                  Last 15 Minutes
-                </DropdownItem>
-              </DropdownMenu>
-            </UncontrolledDropdown>
-          </Col>
-        </Row>
-        <Row>
           <Col md="12">
             <Card>
               <CardHeader>
-                <CardTitle tag="h4">
-                  Device WAN Traffic ⸺ {this.state.wan_scale} ⸺ IN:{' '}
-                  {parseFloat(
-                    this.state.wan
-                      ? this.state.wan.totalIn / 1024 / 1024 / 1024
-                      : 0
-                  ).toFixed(2)}{' '}
-                  GB OUT:{' '}
-                  {parseFloat(
-                    this.state.wan
-                      ? this.state.wan.totalOut / 1024 / 1024 / 1024
-                      : 0
-                  ).toFixed(2)}{' '}
-                  GB
-                </CardTitle>
+                <Row>
+                  <Col md="10">
+                    <CardTitle tag="h4">Device WAN Traffic</CardTitle>
+                    <CardSubtitle className="mb-2 text-muted" tag="h6">
+                      <List type="inline">
+                        <ListInlineItem>
+                          IN: {prettySize(this.state.wan.totalIn)}
+                        </ListInlineItem>
+                        <ListInlineItem>
+                          OUT: {prettySize(this.state.wan.totalOut)}
+                        </ListInlineItem>
+                      </List>
+                    </CardSubtitle>
+                  </Col>
+                  <Col md="2" className="pt-2">
+                    <DateRange
+                      onChange={(newValue) => handleChangeTime(newValue, 'wan')}
+                    />
+                  </Col>
+                </Row>
               </CardHeader>
               <CardBody>
                 {this.state.wan.datasets ? (
@@ -374,50 +337,30 @@ export default class Traffic extends Component {
             </Card>
           </Col>
         </Row>
-
-        <Row>
-          <Col md="10"></Col>
-          <Col md="2">
-            <UncontrolledDropdown group>
-              <DropdownToggle caret color="default">
-                {this.state.lan_scale}
-              </DropdownToggle>
-              <DropdownMenu value="lan">
-                <DropdownItem value="All Time" onClick={handleScaleMenu}>
-                  All time
-                </DropdownItem>
-                <DropdownItem value="1 Day" onClick={handleScaleMenu}>
-                  Last Day
-                </DropdownItem>
-                <DropdownItem value="1 Hour" onClick={handleScaleMenu}>
-                  Last Hour
-                </DropdownItem>
-                <DropdownItem value="15 Minutes" onClick={handleScaleMenu}>
-                  Last 15 Minutes
-                </DropdownItem>
-              </DropdownMenu>
-            </UncontrolledDropdown>
-          </Col>
-        </Row>
         <Row>
           <Col md="12">
             <Card>
               <CardHeader>
-                <CardTitle tag="h4">
-                  Device LAN Traffic ⸺ {this.state.lan_scale} ⸺ IN:{' '}
-                  {parseFloat(
-                    this.state.lan
-                      ? this.state.lan.totalIn / 1024 / 1024 / 1024
-                      : 0
-                  ).toFixed(2)}{' '}
-                  GB OUT:{' '}
-                  {parseFloat(
-                    this.state.lan
-                      ? this.state.lan.totalOut / 1024 / 1024 / 1024
-                      : 0
-                  ).toFixed(2)}{' '}
-                  GB
-                </CardTitle>
+                <Row>
+                  <Col md="10">
+                    <CardTitle tag="h4">Device LAN Traffic</CardTitle>
+                    <CardSubtitle className="mb-2 text-muted" tag="h6">
+                      <List type="inline">
+                        <ListInlineItem>
+                          IN: {prettySize(this.state.wan.totalIn)}
+                        </ListInlineItem>
+                        <ListInlineItem>
+                          OUT: {prettySize(this.state.wan.totalOut)}
+                        </ListInlineItem>
+                      </List>
+                    </CardSubtitle>
+                  </Col>
+                  <Col md="2" className="pt-2">
+                    <DateRange
+                      onChange={(newValue) => handleChangeTime(newValue, 'lan')}
+                    />
+                  </Col>
+                </Row>
               </CardHeader>
               <CardBody>
                 {this.state.lan && this.state.lan.datasets ? (

@@ -1,29 +1,37 @@
 import { Component } from 'react'
 
 export default class ZoneDevice extends Component {
-
   state = {
     zones: []
   }
 
-
-  async componentDidMount() {
-
-    const setState = (v) => {
-      this.setState(v)
-    }
-  }
-
   render() {
-    const device = this.props.device;
+    const device = this.props.device
 
     return (
-        <tr>
-          <td className=""> {device.Name} </td>
-          <td className=""> {device.MAC }</td>
-          <td className=""> {device.IP } </td>
-          <td className=""> {device.ifname } </td>
-        </tr>
+      <tr>
+        <td>
+          {device.Name}
+          {/*device.online !== undefined ? (
+            <i
+              className={
+                device.online
+                  ? 'fa fa-circle text-success'
+                  : 'fa fa-circle text-warning'
+              }
+              style={{
+                position: 'relative',
+                bottom: '0.25ex',
+                fontSize: '9px',
+                marginLeft: '5px'
+              }}
+            />
+          ) : null*/}
+        </td>
+        <td>{device.MAC}</td>
+        <td>{device.IP}</td>
+        <td>{device.ifname}</td>
+      </tr>
     )
   }
 }

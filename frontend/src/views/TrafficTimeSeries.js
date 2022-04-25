@@ -1,13 +1,13 @@
 import React, { useContext, Component } from 'react'
-import { getTrafficHistory } from 'components/Helpers/Api.js'
-import { APIErrorContext } from 'layouts/Admin.js'
-//import 'chartjs-adapter-moment'
+import { deviceAPI, trafficAPI } from 'api'
+import { APIErrorContext } from 'layouts/Admin'
 import chroma from 'chroma-js'
 
-import TimeSeries from 'components/Charts/TimeSeries'
+import TimeSeries from 'components/Traffic/TimeSeries'
 
-export default class TrafficTimeSeries extends Component {
+class TrafficTimeSeries extends Component {
   state = {
+    clients: [],
     WanIn_scale: 'All Time',
     LanIn_scale: 'All Time',
     WanOut_scale: 'All Time',
@@ -15,7 +15,17 @@ export default class TrafficTimeSeries extends Component {
     WanIn: {},
     WanOut: {},
     LanIn: {},
-    LanOut: {}
+    LanOut: {},
+    chartModes: {}
+  }
+
+  constructor(props) {
+    super(props)
+    let chartModes = {},
+      types = ['WanOut', 'WanIn', 'LanIn', 'LanOut']
+
+    types.map((type) => (chartModes[type] = 'data'))
+    this.state.chartModes = chartModes
   }
 
   static contextType = APIErrorContext
@@ -27,19 +37,20 @@ export default class TrafficTimeSeries extends Component {
     if (this.cached_traffic_data !== null) {
       traffic_data = this.cached_traffic_data
     } else {
-      traffic_data = this.cached_traffic_data = await getTrafficHistory().catch(
-        (error) => {
+      traffic_data = this.cached_traffic_data = await trafficAPI
+        .history()
+        .catch((error) => {
           this.context.reportError(
             'API Failure get traffic history: ' + error.message
           )
-        }
-      )
+        })
     }
 
     return traffic_data
   }
 
   async buildTimeSeries(target = '') {
+    let chartMode = this.state.chartModes[target]
     // data = [ {1 minute array of IP => stats, }, ...]
     let traffic_data = await this.fetchData()
 
@@ -77,6 +88,7 @@ export default class TrafficTimeSeries extends Component {
           !traffic_data[idx + 1][ip]
         ) {
         } else {
+          // = this-next
           delta +=
             traffic_data[idx][ip][target] - traffic_data[idx + 1][ip][target]
         }
@@ -104,8 +116,18 @@ export default class TrafficTimeSeries extends Component {
         } else {
           // calculate the delta change between the most recent (idx) and
           // the measurement before (idx+1) convert to % of total change
-          z = traffic_data[idx][ip][target] - traffic_data[idx + 1][ip][target]
-          y = z / deltaSlices[idx]
+          if (chartMode == 'percent') {
+            let diff =
+              traffic_data[idx][ip][target] - traffic_data[idx + 1][ip][target]
+
+            z = diff
+            y = diff / deltaSlices[idx]
+          } else {
+            //y = z = traffic_data[idx][ip][target]
+            y = z =
+              traffic_data[idx][ip][target] - traffic_data[idx + 1][ip][target]
+          }
+
           ipStats[ip].push({ x, y, z })
         }
       }
@@ -132,28 +154,30 @@ export default class TrafficTimeSeries extends Component {
       return traffic_data
     }
 
+    const labelByIP = (ip) => {
+      let client = this.state.clients.filter((client) => client.IP == ip)
+      client = client ? client[0] : null
+      return client && client.Name ? client.Name : ip
+    }
+
     // setup datasets
     let datasets = []
 
-    /*
-    ipStats['192.168.3.100'] = ipStats['192.168.2.6'].map((v) => {
-      const { x, y, z } = v
-      return { x, y: y / 2, z: z / 2 }
-    })
-*/
-
     let colors = chroma
-      //.scale('YlGnBu')
       .scale('Spectral')
       .mode('lch')
       .colors(Object.keys(ipStats).length)
 
     let index = 0
     for (let ip in ipStats) {
-      const c = colors[index++]
-      let data = ipStats[ip] //  drop_quarter_samples(ipStats[ip])
+      const c = chroma(colors[index++])
+        .alpha(0.85)
+        .css()
+      let data = drop_quarter_samples(ipStats[ip])
+      let label = labelByIP(ip)
+
       datasets.push({
-        label: ip,
+        label,
         data_target: target,
         hidden: false,
         stepped: true,
@@ -172,40 +196,59 @@ export default class TrafficTimeSeries extends Component {
   componentDidMount() {
     let targets = ['WanOut', 'WanIn', 'LanOut', 'LanIn']
 
+    deviceAPI.list().then((devices) => {
+      let clients = Object.values(devices).map((d) => {
+        return { Name: d.Name, IP: d.RecentIP, MAC: d.MAC }
+      })
+
+      this.setState({ clients })
+    })
+
     targets.map(async (target) => {
       let datasets = await this.buildTimeSeries(target)
-      //console.log('chart', target, datasets)
       this.setState({ [target]: { datasets } })
     })
   }
 
   render() {
-    const handleTimeChange = (value, type) => {
-      this.setState({ [`${type}_scale`]: value })
-
-      // rebuild selected time series
+    const rebuildTimeSeries = (type) => {
       this.buildTimeSeries(type).then((datasets) => {
         this.setState({ [type]: { datasets: datasets } })
       })
     }
 
+    const handleChangeTime = (value, type) => {
+      this.setState({ [`${type}_scale`]: value })
+      rebuildTimeSeries(type)
+    }
+
+    const handleChangeMode = (value, type) => {
+      let chartModes = this.state.chartModes
+      chartModes[type] = value
+      this.setState({ chartModes }, () => rebuildTimeSeries(type))
+    }
+
     const prettyTitle = (type) => {
       return {
-        WanIn: 'WAN in',
+        WanIn: 'WAN incoming',
         WanOut: 'WAN outgoing',
-        LanIn: 'LAN in',
+        LanIn: 'LAN incoming',
         LanOut: 'LAN outgoing'
       }[type]
     }
+
     return (
       <div className="content">
-        {['WanOut', 'WanIn' /*, 'LanOut', 'LanIn'*/].map((type) => {
+        {['WanOut', 'WanIn', 'LanIn', 'LanOut'].map((type) => {
           return (
             <TimeSeries
+              key={type}
               type={type}
               title={prettyTitle(type)}
               data={this.state[type]}
-              handleTimeChange={handleTimeChange}
+              chartMode={this.state.chartModes[type]}
+              handleChangeTime={handleChangeTime}
+              handleChangeMode={handleChangeMode}
             />
           )
         })}
@@ -213,3 +256,5 @@ export default class TrafficTimeSeries extends Component {
     )
   }
 }
+
+export default TrafficTimeSeries

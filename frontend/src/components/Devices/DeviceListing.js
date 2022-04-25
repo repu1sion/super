@@ -1,7 +1,9 @@
-import { deviceAPI } from 'api/Device'
-import { Component } from "react";
-import Device from "components/Devices/Device.js"
-import {APIErrorContext} from 'layouts/Admin.js';
+import { withRouter } from 'react-router'
+import { Link } from 'react-router-dom'
+import { deviceAPI } from 'api'
+import { Component } from 'react'
+import Device from 'components/Devices/Device.js'
+import { APIErrorContext } from 'layouts/Admin.js'
 import React, { useContext } from 'react'
 
 // reactstrap components
@@ -17,50 +19,79 @@ import {
   Input,
   Table,
   Row,
-  Col,
-  UncontrolledTooltip,
-} from "reactstrap";
+  Col
+} from 'reactstrap'
 
-export default class DeviceListing extends Component {
+class DeviceListing extends Component {
+  state = { devices: {}, deviceRows: [] }
 
-  state = { devices : {}, deviceRows: [] };
+  static contextType = APIErrorContext
 
-  async componentDidMount() {
-
-    const setState = (v) => {
-      this.setState(v)
-    }
-
-    async function refreshDevices() {
-      const d = await deviceAPI.list().catch(error => {
-        this.context.reportError("API Failure: " + error.message)
-      })
-
-      if (d) {
-        let divs = []
-        Object.keys(d).forEach(function(v) {
-              const generatedID = Math.random().toString(36).substr(2, 9);
-
-              divs.push( <Device key={generatedID} device={d[v]} notifyChange={notifyChange} /> )
-           });
-
-        setState({ devices: d, deviceRows: divs })
-      }
-    }
-
-    const notifyChange = () => {
-      refreshDevices()
-    }
-
-    refreshDevices = refreshDevices.bind(this)
-    refreshDevices()
-
+  constructor(props) {
+    super(props)
+    this.refreshDevices = this.refreshDevices.bind(this)
   }
 
-  static contextType = APIErrorContext;
+  // set device oui if avail, else fail gracefully
+  async setOUIs(devices) {
+    let ouis = []
+    try {
+      ouis = await deviceAPI.ouis(
+        Object.keys(devices).filter((id) => id.includes(':'))
+      )
+    } catch (err) {
+      return
+    }
+
+    for (let mac in devices) {
+      devices[mac].oui = ''
+
+      for (let oui of ouis) {
+        if (oui.MAC == mac) {
+          devices[mac].oui = oui.Vendor
+        }
+      }
+    }
+  }
+
+  async refreshDevices() {
+    const devices = await deviceAPI.list().catch((error) => {
+      this.context.reportError('API Failure: ' + error.message)
+    })
+
+    const notifyChange = () => {
+      this.refreshDevices()
+    }
+
+    if (!devices) {
+      return
+    }
+
+    await this.setOUIs(devices)
+
+    this.setState({ devices })
+
+    let divs = []
+    Object.keys(devices).forEach((v) => {
+      const generatedID = Math.random().toString(36).substr(2, 9)
+
+      divs.push(
+        <Device
+          key={generatedID}
+          device={devices[v]}
+          notifyChange={notifyChange}
+        />
+      )
+    })
+
+    this.setState({ deviceRows: divs })
+  }
+
+  componentDidMount() {
+    this.refreshDevices()
+  }
 
   render() {
-
     return (
       <div>
         {this.state.alert}
@@ -68,24 +99,38 @@ export default class DeviceListing extends Component {
           <Col md="12">
             <Card>
               <CardHeader>
-                <CardTitle tag="h4">Configured Devices</CardTitle>
+                <Row>
+                  <Col md="8">
+                    <CardTitle tag="h4">Configured Devices</CardTitle>
+                  </Col>
+                  <Col md="4" className="text-right">
+                    <Link to="/admin/add_device">
+                      <Button className="btn-round" color="primary" outline>
+                        <i className="fa fa-plus" />
+                        Add
+                      </Button>
+                    </Link>
+                  </Col>
+                </Row>
               </CardHeader>
               <CardBody>
                 <Table responsive>
                   <thead className="text-primary">
                     <tr>
-                      <th className="text-center">MAC</th>
-                      <th className="d-none d-md-table-cell">IP</th>
-                      <th>Name</th>
-                      <th>Auth</th>
-                      <th>Zones</th>
-                      <th>Tags</th>
-                      <th className="text-right">Actions</th>
+                      <th width="20%">Name</th>
+                      <th width="15%" className="text-center">
+                        IP/MAC
+                      </th>
+                      {/*<th className="d-none d-md-table-cell">IP</th>*/}
+                      <th width="7%">Auth</th>
+                      <th width="25%">Zones</th>
+                      <th width="25%">Tags</th>
+                      <th width="8%" className="text-right">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
-                  <tbody>
-                    { this.state.deviceRows }
-                  </tbody>
+                  <tbody>{this.state.deviceRows}</tbody>
                 </Table>
               </CardBody>
             </Card>
@@ -95,3 +140,6 @@ export default class DeviceListing extends Component {
     )
   }
 }
+
+const DeviceListingWithRouter = withRouter(DeviceListing)
+export default DeviceListingWithRouter
